@@ -143,6 +143,7 @@ set(BOX2D_SAMPLE_FILES
     shader.c
     shader.h
     stb_image_write.h
+    sample_my.cpp
 )
 
 add_executable(samples ${BOX2D_SAMPLE_FILES})

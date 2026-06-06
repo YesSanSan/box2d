@@ -302,6 +302,7 @@ void Sample::CreateWorld()
 	worldDef.userTaskContext = this;
 	worldDef.enableSleep = m_context->enableSleep;
 	worldDef.capacity = m_context->capacity;
+	worldDef.gravity = { 0.0f, -100.0f };
 	if ( m_context->record )
 	{
 		worldDef.recordingPath = m_context->recordingFile;
