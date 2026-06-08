@@ -26,7 +26,7 @@ struct SampleContext
 	float uiScale = 1.0f;
 	float hertz = 60.0f;
 	float recycleDistance = 0.05f;
-	int subStepCount = 4;
+	int subStepCount = 32;
 	int workerCount = 1;
 	bool restart = false;
 	bool pause = false;

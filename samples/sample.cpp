@@ -1171,7 +1171,7 @@ void SelectSample( SampleContext* context, int selection, bool restart )
 	{
 		ResetView( &context->camera );
 		context->sampleIndex = selection;
-		context->subStepCount = 4;
+		context->subStepCount = 32;
 		context->debugDraw.drawJoints = true;
 
 		// Switching samples stops recording; a restart keeps it on and re-records
