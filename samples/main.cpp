@@ -486,6 +486,9 @@ int main( int argc, char** argv )
 	s_context.Load();
 	s_context.workerCount = b2MinInt( 8, GetNumberOfCores() / 2 );
 
+	SortSamples();
+	g_replayIndex = FindSampleIndex( "Replay", "Replay File" );
+
 	// A recording path on the command line opens straight into the replay viewer.
 	// Dragging a file onto the exe arrives here as argv[1] too.
 	if ( argc > 1 && g_replayIndex >= 0 )
@@ -494,7 +497,6 @@ int main( int argc, char** argv )
 		s_context.sampleIndex = g_replayIndex;
 	}
 
-	SortSamples();
 	if ( s_context.sampleIndex < 0 )
 	{
 		s_context.sampleIndex = FindSampleIndex( "my", "pid" );

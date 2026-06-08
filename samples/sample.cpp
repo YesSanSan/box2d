@@ -154,11 +154,6 @@ void SampleContext::Load()
 
 	recycleDistance = B2_CONTACT_RECYCLE_DISTANCE;
 
-	if (g_replayIndex >= 0)
-	{
-		sampleIndex = g_replayIndex;
-	}
-
 	char* data = nullptr;
 	int size = 0;
 	bool found = ReadFile( data, size, fileName );
