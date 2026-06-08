@@ -122,6 +122,19 @@ static void SortSamples()
 	qsort( g_sampleEntries, g_sampleCount, sizeof( SampleEntry ), CompareSamples );
 }
 
+static int FindSampleIndex( const char* category, const char* name )
+{
+	for ( int i = 0; i < g_sampleCount; ++i )
+	{
+		if ( strcmp( g_sampleEntries[i].category, category ) == 0 && strcmp( g_sampleEntries[i].name, name ) == 0 )
+		{
+			return i;
+		}
+	}
+
+	return -1;
+}
+
 static void ApplyUIStyle( void )
 {
 	ImGuiStyle& style = ImGui::GetStyle();
@@ -474,6 +487,14 @@ int main( int, char** )
 	s_context.workerCount = b2MinInt( 8, GetNumberOfCores() / 2 );
 
 	SortSamples();
+	if ( s_context.sampleIndex < 0 )
+	{
+		s_context.sampleIndex = FindSampleIndex( "my", "pid" );
+		if ( s_context.sampleIndex < 0 )
+		{
+			s_context.sampleIndex = 0;
+		}
+	}
 
 	glfwSetErrorCallback( glfwErrorCallback );
 

@@ -48,7 +48,7 @@ struct SampleContext
 	char recordingFile[256] = "recording.b2rec";
 
 	// These are persisted
-	int sampleIndex = 0;
+	int sampleIndex = -1;
 };
 
 class Sample
