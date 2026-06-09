@@ -18,6 +18,7 @@
 
 class SampleMyTest : public Sample
 {
+	b2BodyId m_groundId;
 	b2BodyId m_chassisId;
 	b2BodyId m_wheelId;
 	b2JointId m_axleId;
@@ -40,6 +41,21 @@ class SampleMyTest : public Sample
 	PID pid_angle;
 	PID pid_speed;
 
+	struct MapSettings
+	{
+		float areaWidth;
+		float areaHeight;
+		float laneLength;
+		int laneCount;
+		float laneGap;
+		float minLaneAngle;
+		float maxLaneAngle;
+		float minRoughness;
+		float maxRoughness;
+	};
+
+	MapSettings m_map;
+
 	float manual_target_angle;
 	float speed_target_angle;
 	float command_angle;
@@ -61,31 +77,23 @@ public:
 	{
 		if ( m_context->restart == false )
 		{
-			m_context->camera.center = { 8.0f, 25.0f };
-			m_context->camera.zoom = 60.0f;
+			m_context->camera.center = { 0.0f, 40.0f };
+			m_context->camera.zoom = 85.0f;
 		}
 
-		{
-			float gridSize = 1.0f;
-
-			b2BodyDef bodyDef = b2DefaultBodyDef();
-			b2BodyId groundId = b2CreateBody( m_worldId, &bodyDef );
-
-			b2ShapeDef shapeDef = b2DefaultShapeDef();
-
-			b2Polygon box = b2MakeOffsetBox( 50, 1, b2Vec2{ 0, 0 }, b2Rot_identity );
-			b2CreatePolygonShape( groundId, &shapeDef, &box );
-			box = b2MakeOffsetBox( 50, 1, b2Vec2{ 0, 100 }, b2Rot_identity );
-			b2CreatePolygonShape( groundId, &shapeDef, &box );
-			box = b2MakeOffsetBox( 1, 50, b2Vec2{ -50, 50 }, b2Rot_identity );
-			b2CreatePolygonShape( groundId, &shapeDef, &box );
-			box = b2MakeOffsetBox( 1, 50, b2Vec2{ 50, 50 }, b2Rot_identity );
-			b2CreatePolygonShape( groundId, &shapeDef, &box );
-		}
-
+		m_groundId = {};
 		m_chassisId = {};
 		m_wheelId = {};
 		m_axleId = {};
+		m_map = { .areaWidth = 160.0f,
+				  .areaHeight = 80.0f,
+				  .laneLength = 46.0f,
+				  .laneCount = 5,
+				  .laneGap = 8.0f,
+				  .minLaneAngle = -22.0f,
+				  .maxLaneAngle = 18.0f,
+				  .minRoughness = 0.0f,
+				  .maxRoughness = 1.0f };
 		pid_angle = { .kp = 2000, .ki = 40, .kd = 8000, .i_limit = 20, .out_limit = 500 };
 		pid_speed = { .kp = 0.08f, .ki = 0.125f, .kd = 0.0f, .i_limit = 0.225f, .out_limit = 0.25f };
 		manual_target_angle = 0;
@@ -100,6 +108,8 @@ public:
 		speed_filter_init = false;
 		speed_log_active = false;
 		speed_log_time = 0.0f;
+
+		CreateMap();
 
 		{
 
@@ -181,6 +191,120 @@ public:
 	~SampleMyTest() override
 	{
 		end_speed_log();
+	}
+
+	void sanitize_map_settings()
+	{
+		m_map.areaWidth = std::clamp( m_map.areaWidth, 40.0f, 260.0f );
+		m_map.areaHeight = std::clamp( m_map.areaHeight, 30.0f, 180.0f );
+		m_map.laneLength = std::clamp( m_map.laneLength, 8.0f, m_map.areaWidth * 0.45f );
+		m_map.laneCount = std::clamp( m_map.laneCount, 1, 12 );
+		m_map.laneGap = std::clamp( m_map.laneGap, 2.0f, 20.0f );
+		if ( m_map.laneCount > 1 )
+		{
+			float maxGap = 0.72f * m_map.areaHeight / static_cast<float>( m_map.laneCount - 1 );
+			m_map.laneGap = std::min( m_map.laneGap, std::max( 2.0f, maxGap ) );
+		}
+		m_map.minLaneAngle = std::clamp( m_map.minLaneAngle, -60.0f, 60.0f );
+		m_map.maxLaneAngle = std::clamp( m_map.maxLaneAngle, -60.0f, 60.0f );
+		m_map.minRoughness = std::clamp( m_map.minRoughness, 0.0f, 3.0f );
+		m_map.maxRoughness = std::clamp( m_map.maxRoughness, 0.0f, 3.0f );
+	}
+
+	void CreateBorder( b2BodyId groundId, const b2ShapeDef& shapeDef )
+	{
+		float halfWidth = 0.5f * m_map.areaWidth;
+		float halfHeight = 0.5f * m_map.areaHeight;
+		float centerY = halfHeight;
+		float wall = 1.0f;
+
+		b2Polygon box = b2MakeOffsetBox( halfWidth, wall, b2Vec2{ 0.0f, 0.0f }, b2Rot_identity );
+		b2CreatePolygonShape( groundId, &shapeDef, &box );
+		box = b2MakeOffsetBox( halfWidth, wall, b2Vec2{ 0.0f, m_map.areaHeight }, b2Rot_identity );
+		b2CreatePolygonShape( groundId, &shapeDef, &box );
+		box = b2MakeOffsetBox( wall, halfHeight, b2Vec2{ -halfWidth, centerY }, b2Rot_identity );
+		b2CreatePolygonShape( groundId, &shapeDef, &box );
+		box = b2MakeOffsetBox( wall, halfHeight, b2Vec2{ halfWidth, centerY }, b2Rot_identity );
+		b2CreatePolygonShape( groundId, &shapeDef, &box );
+	}
+
+	void CreateStraightLanes( b2BodyId groundId, const b2ShapeDef& shapeDef )
+	{
+		float halfLength = 0.5f * m_map.laneLength;
+		float baseX = -0.25f * m_map.areaWidth;
+		float laneBlockHeight = ( m_map.laneCount - 1 ) * m_map.laneGap;
+		float startY = 0.56f * m_map.areaHeight + 0.5f * laneBlockHeight;
+
+		for ( int i = 0; i < m_map.laneCount; ++i )
+		{
+			float t = m_map.laneCount > 1 ? static_cast<float>( i ) / static_cast<float>( m_map.laneCount - 1 ) : 0.5f;
+			float angleDegrees = ( 1.0f - t ) * m_map.minLaneAngle + t * m_map.maxLaneAngle;
+			float angle = angleDegrees * B2_PI / 180.0f;
+			b2Vec2 direction = { std::cos( angle ), std::sin( angle ) };
+			b2Vec2 center = { baseX, startY - i * m_map.laneGap };
+			b2Segment segment = { b2Sub( center, b2MulSV( halfLength, direction ) ), b2Add( center, b2MulSV( halfLength, direction ) ) };
+			b2CreateSegmentShape( groundId, &shapeDef, &segment );
+		}
+	}
+
+	void CreateRoughLanes( b2BodyId groundId, const b2ShapeDef& shapeDef )
+	{
+		float baseX = 0.25f * m_map.areaWidth;
+		float laneBlockHeight = ( m_map.laneCount - 1 ) * m_map.laneGap;
+		float startY = 0.56f * m_map.areaHeight + 0.5f * laneBlockHeight;
+		const int segmentCount = 24;
+
+		for ( int i = 0; i < m_map.laneCount; ++i )
+		{
+			float t = m_map.laneCount > 1 ? static_cast<float>( i ) / static_cast<float>( m_map.laneCount - 1 ) : 0.0f;
+			float roughness = ( 1.0f - t ) * m_map.minRoughness + t * m_map.maxRoughness;
+			float amplitude = 0.9f * roughness;
+			float waves = 1.0f + 2.5f * roughness;
+			float y = startY - i * m_map.laneGap;
+			b2Vec2 previous = { baseX - 0.5f * m_map.laneLength, y };
+
+			for ( int j = 1; j <= segmentCount; ++j )
+			{
+				float u = static_cast<float>( j ) / static_cast<float>( segmentCount );
+				float x = baseX - 0.5f * m_map.laneLength + u * m_map.laneLength;
+				float wave = amplitude * std::sin( u * waves * 2.0f * B2_PI );
+				float smallWave = 0.35f * amplitude * std::sin( u * ( waves * 3.0f + 1.0f ) * 2.0f * B2_PI + 0.7f * i );
+				b2Vec2 current = { x, y + wave + smallWave };
+				b2Segment segment = { previous, current };
+				b2CreateSegmentShape( groundId, &shapeDef, &segment );
+				previous = current;
+			}
+		}
+	}
+
+	void CreateMap()
+	{
+		sanitize_map_settings();
+
+		b2BodyDef bodyDef = b2DefaultBodyDef();
+		m_groundId = b2CreateBody( m_worldId, &bodyDef );
+
+		b2ShapeDef shapeDef = b2DefaultShapeDef();
+		shapeDef.material.friction = 1.0f;
+
+		CreateBorder( m_groundId, shapeDef );
+		CreateStraightLanes( m_groundId, shapeDef );
+		CreateRoughLanes( m_groundId, shapeDef );
+	}
+
+	void DestroyMap()
+	{
+		if ( B2_IS_NON_NULL( m_groundId ) )
+		{
+			b2DestroyBody( m_groundId );
+			m_groundId = {};
+		}
+	}
+
+	void RebuildMap()
+	{
+		DestroyMap();
+		CreateMap();
 	}
 
 	float pid_update( PID& pid, float cur, float target )
@@ -390,6 +514,27 @@ public:
 		// }
 
 		ImGui::Checkbox( "use speed", &use_speed );
+
+		if ( ImGui::CollapsingHeader( "map", ImGuiTreeNodeFlags_DefaultOpen ) )
+		{
+			bool rebuild = false;
+			ImGui::PushItemWidth( 6.0f * ImGui::GetFontSize() );
+			rebuild = ImGui::SliderFloat( "area width", &m_map.areaWidth, 40.0f, 260.0f, "%.0f" ) || rebuild;
+			rebuild = ImGui::SliderFloat( "area height", &m_map.areaHeight, 30.0f, 180.0f, "%.0f" ) || rebuild;
+			rebuild = ImGui::SliderFloat( "lane length", &m_map.laneLength, 8.0f, 120.0f, "%.1f" ) || rebuild;
+			rebuild = ImGui::SliderInt( "lane count", &m_map.laneCount, 1, 12 ) || rebuild;
+			rebuild = ImGui::SliderFloat( "lane gap", &m_map.laneGap, 2.0f, 20.0f, "%.1f" ) || rebuild;
+			rebuild = ImGui::SliderFloat( "min angle", &m_map.minLaneAngle, -60.0f, 60.0f, "%.0f" ) || rebuild;
+			rebuild = ImGui::SliderFloat( "max angle", &m_map.maxLaneAngle, -60.0f, 60.0f, "%.0f" ) || rebuild;
+			rebuild = ImGui::SliderFloat( "min rough", &m_map.minRoughness, 0.0f, 3.0f, "%.2f" ) || rebuild;
+			rebuild = ImGui::SliderFloat( "max rough", &m_map.maxRoughness, 0.0f, 3.0f, "%.2f" ) || rebuild;
+			ImGui::PopItemWidth();
+
+			if ( rebuild )
+			{
+				RebuildMap();
+			}
+		}
 
 		// ImGui::Text( "world size = %g kilometers", m_gridSize * m_gridCount / 1000.0f );
 
